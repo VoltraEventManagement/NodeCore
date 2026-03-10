@@ -9,7 +9,6 @@ const errorHandler = require("./middlewares/errorHandler")
 
 
 app.use(express.json())
-app.use("/uploads", express.static("uploads"))
 
 // routes 
 app.use("/api/events", eventRouter) 
