@@ -351,9 +351,7 @@ const getSingleEvent = async (req, res) => {
         const speakers = speakersResult.rows;
         const photoQuery = `SELECT photo FROM "event_photo" WHERE event_id_id = $1`;
         const photosResult = await pool.query(photoQuery, [event_id]);
-        const photos = photosResult.rows.map(p => 
-            `${req.protocol}://${req.get("host")}/uploads/${p.photo}`
-        );
+        const photos = photosResult.rows.map(p => p.photo)
         return res.status(StatusCodes.OK).json({
             success: true,
             data: {
