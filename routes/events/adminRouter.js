@@ -5,7 +5,7 @@ const authorizedAdmin = require("../../middlewares/adminAuthorization")
 const {createEvent , updateEvent, deleteEvent , downloadMonthlyReportExcel } = require("../../controllers/eventsControllers/adminController")
 const upload = require("../../middlewares/uploadFile")
 const validationSchema = require("../../middlewares/validation")
-const validationSchemaMultipart = require("../../middlewares/validationmultipart")
+const validationSchemaMultipart = require("../../middlewares/validationMultiPart")
 const {createEventValidator, updateEventValidator, deleteEventValidator, eventIdParamValidator} = require("../../validators/eventValidators")
 
 adminRouter.use(authenticatedUser)

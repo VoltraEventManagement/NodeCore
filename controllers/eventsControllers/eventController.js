@@ -38,7 +38,7 @@ const upcomingEvents = async (req, res) => {
                 WHERE event_id_id = $1
             `, [event_id]);
 
-            const photos = photosResult.rows.map(p => p.photo); // أو لو Cloudinary: p.photo
+            const photos = photosResult.rows.map(p => p.photo); 
 
             return {
                 ...event,
@@ -110,7 +110,7 @@ const pastEvents = async (req, res) => {
                 WHERE event_id_id = $1
             `, [event_id]);
 
-            const photos = photosResult.rows.map(p => p.photo); // لو Cloudinary, استخدمي result.secure_url
+            const photos = photosResult.rows.map(p => p.photo);
 
             // Count attendees
             const attendeesResult = await pool.query(`
@@ -160,7 +160,6 @@ const getEventsByDate = async (req, res) => {
             });
         }
 
-        // 1️⃣ Get events on that date
         const eventsResult = await pool.query(
             `SELECT * FROM "event_event" WHERE DATE(date) = $1 ORDER BY date ASC`,
             [date]
