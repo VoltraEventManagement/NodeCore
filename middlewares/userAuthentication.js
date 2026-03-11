@@ -6,6 +6,7 @@ const authenticatedUser = (req, res, next) => {
     try {
 
         const authHeader = req.headers.authorization
+        console.log("authHeader:", authHeader   ) // Debugging line to check the value of authHeader
 
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
             return res
@@ -17,6 +18,7 @@ const authenticatedUser = (req, res, next) => {
         }
 
         const token = authHeader.split(" ")[1]
+        console.log("Extracted token:", token) // Debugging line to check the extracted token
         const decoded = jwt.verify(token, process.env.JWT_SECRET) 
         req.user = decoded   
         next()
