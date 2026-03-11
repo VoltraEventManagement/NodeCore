@@ -26,7 +26,8 @@ const authenticatedUser = (req, res, next) => {
             .status(StatusCodes.UNAUTHORIZED)
             .json({
                 success: false,
-                message: "Invalid or expired token"
+                message: "Invalid or expired token",
+                error: error.message
             })
     }
 }
