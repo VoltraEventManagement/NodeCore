@@ -126,44 +126,43 @@ const createEvent = async (req, res) => {
 
 
 const updateEvent = async (req, res) => {
+    const { event_id } = req.params;
+    const client = await pool.connect();
 
-    const { event_id } = req.params
-    let { title, date, city, description, type, target_audience, event_speakers } = req.body
-    const client = await pool.connect()
     try {
-        await client.query("BEGIN")
+        await client.query("BEGIN");
+
+        // Check if event exists
         const existingEvent = await client.query(
-            `SELECT * FROM "event_event" WHERE event_id=$1`,
+            `SELECT * FROM "event_event" WHERE event_id = $1`,
             [event_id]
-        )
+        );
 
         if (!existingEvent.rows.length) {
-            await client.query("ROLLBACK")
+            await client.query("ROLLBACK");
             return res.status(StatusCodes.NOT_FOUND).json({
                 success: false,
                 message: `Event with ID ${event_id} not found`
-            })
+            });
         }
+
+        const { date } = req.body;
+
+        // If date is being updated, check for conflicts
         if (date) {
-
             const dateConflict = await client.query(
-                `SELECT * FROM "event_event" WHERE date=$1 AND event_id != $2`,
+                `SELECT * FROM "event_event" WHERE date = $1 AND event_id != $2`,
                 [date, event_id]
-            )
+            );
+
             if (dateConflict.rows.length > 0) {
-
-                await client.query("ROLLBACK")
-
+                await client.query("ROLLBACK");
                 return res.status(StatusCodes.BAD_REQUEST).json({
                     success: false,
-                    message: `This date ${date} is already reserved`
-                })
+                    message: `This date ${date} is already reserved by another event`
+                });
             }
         }
-
-        const fields = []
-        const values = []
-        let idx = 1
 
         const allowedFields = [
             "title",
@@ -172,149 +171,72 @@ const updateEvent = async (req, res) => {
             "description",
             "type",
             "target_audience"
-        ]
+        ];
 
-        allowedFields.forEach(f => {
+        const fields = [];
+        const values = [];
+        let idx = 1;
 
-            if (req.body[f] !== undefined) {
-
-                fields.push(`"${f}"=$${idx++}`)
-                values.push(req.body[f])
+        allowedFields.forEach(field => {
+            if (req.body[field] !== undefined) {
+                fields.push(`"${field}" = $${idx++}`);
+                values.push(req.body[field]);
             }
-        })
-        let eventResult
+        });
+
+        let eventResult = existingEvent;
 
         if (fields.length > 0) {
-
-            values.push(event_id)
-
+            values.push(event_id);
             const updateQuery = `
                 UPDATE "event_event"
                 SET ${fields.join(", ")}
-                WHERE event_id=$${idx}
+                WHERE event_id = $${idx}
                 RETURNING *
-            `
-            eventResult = await client.query(updateQuery, values)
-        } else {
-            eventResult = existingEvent
+            `;
+            eventResult = await client.query(updateQuery, values);
         }
 
-        if (event_speakers) {
-
-            if (typeof event_speakers === "string") {
-                event_speakers = JSON.parse(event_speakers)
-            }
-
-            if (Array.isArray(event_speakers)) {
-
-                await client.query(
-                    `DELETE FROM "event_event_event_speakers" WHERE event_id=$1`,
-                    [event_id]
-                )
-
-                for (let speaker of event_speakers) {
-
-                    const { speaker_id, name, position } = speaker
-
-                    let idToUse = speaker_id
-
-                    if (!idToUse) {
-
-                        const insertSpeaker = await client.query(
-                            `
-                            INSERT INTO "event_speaker"(name, position)
-                            VALUES($1,$2)
-                            RETURNING speaker_id
-                            `,
-                            [name, position || null]
-                        )
-
-                        idToUse = insertSpeaker.rows[0].speaker_id
-
-                    }
-
-                    await client.query(
-                        `
-                        INSERT INTO "event_event_event_speakers"(event_id,speaker_id)
-                        VALUES($1,$2)
-                        `,
-                        [event_id, idToUse]
-                    )
-                }
-            }
-        }
-        const oldPhotos = await client.query(
-            `SELECT photo FROM "event_photo" WHERE event_id=$1`,
-            [event_id]
-        )
-
-        for (const p of oldPhotos.rows) {
-
-            const urlParts = p.photo.split("/")
-            const fileName = urlParts[urlParts.length - 1]
-            const publicId = `events/${fileName.split(".")[0]}`
-            await cloudinary.uploader.destroy(publicId)
-        }
-        await client.query(
-            `DELETE FROM "event_photo" WHERE event_id=$1`,
-            [event_id]
-        )
-        if (req.files && req.files.length > 0) {
-            const insertPhotoQuery = `
-                INSERT INTO "event_photo"(photo,event_id)
-                VALUES ($1,$2)
-            `
-            for (let file of req.files) {
-                const result = await cloudinary.uploader.upload(
-                    `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
-                    {
-                        folder: "events"
-                    }
-                )
-                await client.query(insertPhotoQuery, [
-                    result.secure_url,
-                    event_id
-                ])
-            }
-        }
-        await client.query("COMMIT")
         const speakersResult = await client.query(`
             SELECT s.speaker_id, s.name, s.position
             FROM "event_speaker" s
             JOIN "event_event_event_speakers" j
             ON s.speaker_id = j.speaker_id
             WHERE j.event_id = $1
-        `, [event_id])
+        `, [event_id]);
 
         const photosResult = await client.query(
-            `SELECT photo FROM "event_photo" WHERE event_id=$1`,
+            `SELECT photo FROM "event_photo" WHERE event_id_id = $1`,
             [event_id]
-        )
+        );
 
-        const photos = photosResult.rows.map(p => p.photo)
+        const photos = photosResult.rows.map(p => p.photo);
+
+        await client.query("COMMIT");
 
         return res.status(StatusCodes.OK).json({
-
             success: true,
             message: `${eventResult.rows[0].title} event updated successfully`,
-
             event: {
                 ...eventResult.rows[0],
                 event_speakers: speakersResult.rows,
                 photos: photos
             }
-        })
+        });
+
     } catch (error) {
-        await client.query("ROLLBACK")
+        await client.query("ROLLBACK");
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             success: false,
             message: "An error occurred while updating the event",
             error: error.message
-        })
+        });
     } finally {
-        client.release()
+        client.release();
     }
-}
+};
+
+
 
 const deleteEvent = async (req, res) => {
     const { event_id } = req.params
@@ -335,7 +257,7 @@ const deleteEvent = async (req, res) => {
             })
         }
         const photosResult = await client.query(
-            `SELECT photo FROM "event_photo" WHERE event_id=$1`,
+            `SELECT photo FROM "event_photo" WHERE event_id_id=$1`,
             [event_id]
         )
 
@@ -347,7 +269,7 @@ const deleteEvent = async (req, res) => {
             await cloudinary.uploader.destroy(publicId)
         }
 
-        await client.query(`DELETE FROM "event_photo" WHERE event_id=$1`, [event_id])
+        await client.query(`DELETE FROM "event_photo" WHERE event_id_id=$1`, [event_id])
         await client.query(`DELETE FROM "event_event_event_speakers" WHERE event_id=$1`, [event_id])
         await client.query(`DELETE FROM "event_event" WHERE event_id=$1`, [event_id])
 
