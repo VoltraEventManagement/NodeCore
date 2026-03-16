@@ -298,9 +298,13 @@ const deleteEvent = async (req, res) => {
             await cloudinary.uploader.destroy(publicId)
         }
 
-        await client.query(`DELETE FROM "event_photo" WHERE event_id_id=$1`, [event_id])
-        await client.query(`DELETE FROM "event_event_event_speakers" WHERE event_id=$1`, [event_id])
-        await client.query(`DELETE FROM "event_event" WHERE event_id=$1`, [event_id])
+await client.query(`DELETE FROM "event_photo" WHERE event_id_id=$1`, [event_id])
+
+await client.query(`DELETE FROM "event_event_event_speakers" WHERE event_id=$1`, [event_id])
+
+await client.query(`DELETE FROM "event_eventuser" WHERE event_id_id=$1`, [event_id])
+
+await client.query(`DELETE FROM "event_event" WHERE event_id=$1`, [event_id])
 
         await client.query("COMMIT")
 
@@ -320,6 +324,10 @@ const deleteEvent = async (req, res) => {
         client.release()
     }
 }
+
+
+
+
 
 
 const downloadMonthlyReportExcel = async (req, res) => {
