@@ -205,12 +205,36 @@ const updateEvent = async (req, res) => {
             WHERE j.event_id = $1
         `, [event_id]);
 
-        const photosResult = await client.query(
-            `SELECT photo FROM "event_photo" WHERE event_id_id = $1`,
-            [event_id]
-        );
+      let photos = []
 
-        const photos = photosResult.rows.map(p => p.photo);
+// upload new photos if exist
+if (req.files && req.files.length > 0) {
+
+    for (const file of req.files) {
+
+        const result = await cloudinary.uploader.upload(
+            `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
+            {
+                folder: "events"
+            }
+        )
+
+        await client.query(
+            `INSERT INTO event_photo (event_id_id, photo) VALUES ($1,$2)`,
+            [event_id, result.secure_url]
+        )
+
+        photos.push(result.secure_url)
+    }
+}
+
+// get all photos for this event (old + new)
+const photosResult = await client.query(
+    `SELECT photo FROM event_photo WHERE event_id_id = $1`,
+    [event_id]
+)
+
+photos = photosResult.rows.map(p => p.photo)
 
         await client.query("COMMIT");
 
@@ -235,6 +259,11 @@ const updateEvent = async (req, res) => {
         client.release();
     }
 };
+
+
+
+
+
 
 
 
