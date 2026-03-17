@@ -6,12 +6,22 @@ const pool = require("./DB/connectPostgresql")
 const eventRouter = require("./routes/events/eventRouter")
 const adminRouter = require("./routes/events/adminRouter")
 const errorHandler = require("./middlewares/errorHandler")
+const cors = require("cors")
 
 
 app.use(express.json())
+app.use(cors({
+    origin: ["http://localhost:3000",
+        "https://alx-voltra.vercel.app/",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+}))
+
 
 // routes 
-app.use("/api/events", eventRouter) 
+app.use("/api/events", eventRouter)
 app.use("/api/admin/events", adminRouter)
 
 
