@@ -11,13 +11,14 @@ const cors = require("cors")
 
 app.use(express.json())
 app.use(cors({
-    origin: ["http://localhost:3000",
-        "https://alx-voltra.vercel.app/",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-}))
+  origin: [
+    "http://localhost:3000",
+    "https://alx-voltra.vercel.app"
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 
 
 // routes 
