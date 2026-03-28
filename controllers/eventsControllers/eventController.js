@@ -3,15 +3,27 @@ const pool = require("../../DB/connectPostgresql")
 const generateQRCode = require("../../services/generateQR")
 const sendConfirmationEmail = require("../../services/sendConfirmationEmail")
 
+
 const upcomingEvents = async (req, res) => {
     try {
-        const eventsResult = await pool.query(`
+        const user = req.user;
+        const allowedRolesForPrivate = ["learner", "alumni"];
+        const canSeePrivate = user && allowedRolesForPrivate.includes(user.user_status);  // private member
+
+        let query = `
             SELECT *
             FROM "event_event"
             WHERE date >= CURRENT_DATE
-            ORDER BY date ASC;
-        `);
+        `;
+
+        if (!canSeePrivate) {
+            query += ` AND category = public`;
+        }
+        query += ` ORDER BY date ASC`;
+
+        const eventsResult = await pool.query(query);
         const events = eventsResult.rows;
+
         if (events.length === 0) {
             return res.status(StatusCodes.OK).json({
                 success: true,
@@ -21,42 +33,51 @@ const upcomingEvents = async (req, res) => {
             });
         }
 
-        const enhancedEvents = await Promise.all(events.map(async (event) => {
-            const event_id = event.event_id;
+        const enhancedEvents = await Promise.all(
+            events.map(async (event) => {
+                const event_id = event.event_id;
 
-            const speakersResult = await pool.query(`
-                SELECT s.speaker_id, s.name, s.position
-                FROM "event_speaker" s
-                JOIN "event_event_event_speakers" j
-                ON s.speaker_id = j.speaker_id
-                WHERE j.event_id = $1
-            `, [event_id]);
+                const [speakersResult, photosResult] = await Promise.all([
+                    pool.query(
+                        `
+                        SELECT s.speaker_id, s.name, s.position, s.linked_profile
+                        FROM "event_speaker" s
+                        JOIN "event_event_event_speakers" j
+                        ON s.speaker_id = j.speaker_id
+                        WHERE j.event_id = $1
+                        `,
+                        [event_id]
+                    ),
 
-            const photosResult = await pool.query(`
-                SELECT photo
-                FROM "event_photo"
-                WHERE event_id_id = $1
-            `, [event_id]);
+                    pool.query(
+                        `
+                        SELECT photo
+                        FROM "event_photo"
+                        WHERE event_id_id = $1
+                        `,
+                        [event_id]
+                    )
+                ]);
 
-            const photos = photosResult.rows.map(p => p.photo); 
-
-            return {
-                ...event,
-                event_speakers: speakersResult.rows,
-                photos: photos
-            };
-        }));
+                return {
+                    ...event,
+                    event_speakers: speakersResult.rows,
+                    photos: photosResult.rows.map((p) => p.photo)
+                };
+            })
+        );
 
         console.log("Upcoming Events ✅");
 
-        res.status(StatusCodes.OK).json({
+        return res.status(StatusCodes.OK).json({
             success: true,
-            totalEvents: events.length,
+            totalEvents: enhancedEvents.length,
             data: enhancedEvents
         });
 
     } catch (error) {
         console.error("Upcoming Events Error:", error);
+
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             success: false,
             message: "Failed to get upcoming events",
@@ -67,18 +88,27 @@ const upcomingEvents = async (req, res) => {
 
 
 
-
-
 const pastEvents = async (req, res) => {
     try {
-        // 1️⃣ Get all past events
-        const eventsResult = await pool.query(`
+        const user = req.user;
+
+        const allowedRolesForPrivate = ["learner", "alumni"];
+        const canSeePrivate =
+            user && allowedRolesForPrivate.includes(user.user_status);
+
+        let query = `
             SELECT *
             FROM "event_event"
             WHERE date < CURRENT_DATE
-            ORDER BY date DESC;
-        `);
+        `;
 
+        if (!canSeePrivate) {
+            query += ` AND category = 'public'`;
+        }
+
+        query += ` ORDER BY date DESC`;
+
+        const eventsResult = await pool.query(query);
         const events = eventsResult.rows;
 
         if (events.length === 0) {
@@ -90,44 +120,38 @@ const pastEvents = async (req, res) => {
             });
         }
 
-        // 2️⃣ Fetch photos and speakers for each event
-        const enhancedEvents = await Promise.all(events.map(async (event) => {
-            const event_id = event.event_id;
+        const enhancedEvents = await Promise.all(
+            events.map(async (event) => {
+                const event_id = event.event_id;
 
-            // Get speakers
-            const speakersResult = await pool.query(`
-                SELECT s.speaker_id, s.name, s.position
-                FROM "event_speaker" s
-                JOIN "event_event_event_speakers" j
-                ON s.speaker_id = j.speaker_id
-                WHERE j.event_id = $1
-            `, [event_id]);
+                const [speakersResult, photosResult] = await Promise.all([
+                    pool.query(
+                        `
+                        SELECT s.speaker_id, s.name, s.position, s.linked_profile
+                        FROM "event_speaker" s
+                        JOIN "event_event_event_speakers" j
+                        ON s.speaker_id = j.speaker_id
+                        WHERE j.event_id = $1
+                        `,
+                        [event_id]
+                    ),
+                    pool.query(
+                        `
+                        SELECT photo
+                        FROM "event_photo"
+                        WHERE event_id_id = $1
+                        `,
+                        [event_id]
+                    )
+                ]);
 
-            // Get photos
-            const photosResult = await pool.query(`
-                SELECT photo
-                FROM "event_photo"
-                WHERE event_id_id = $1
-            `, [event_id]);
-
-            const photos = photosResult.rows.map(p => p.photo);
-
-            // Count attendees
-            const attendeesResult = await pool.query(`
-                SELECT COUNT(*) AS num_attendees
-                FROM "event_eventuser"
-                WHERE event_id_id = $1
-            `, [event_id]);
-
-            const num_attendees = parseInt(attendeesResult.rows[0].num_attendees, 10);
-
-            return {
-                ...event,
-                event_speakers: speakersResult.rows,
-                photos: photos,
-                num_attendees: num_attendees
-            };
-        }));
+                return {
+                    ...event,
+                    event_speakers: speakersResult.rows,
+                    photos: photosResult.rows.map((p) => p.photo)
+                };
+            })
+        );
 
         console.log(`Past Events ✅ Total: ${enhancedEvents.length}`);
 
@@ -148,97 +172,28 @@ const pastEvents = async (req, res) => {
 };
 
 
-
-const getEventsByDate = async (req, res) => {
-    try {
-        const { date } = req.query;
-
-        if (!date) {
-            return res.status(400).json({
-                success: false,
-                message: "Date is required in format YYYY-MM-DD"
-            });
-        }
-
-        const eventsResult = await pool.query(
-            `SELECT * FROM "event_event" WHERE DATE(date) = $1 ORDER BY date ASC`,
-            [date]
-        );
-
-        const events = eventsResult.rows;
-
-        if (events.length === 0) {
-            return res.status(StatusCodes.OK).json({
-                success: false,
-                message: `No events found on ${date}`,
-                totalEvents: 0,
-                data: []
-            });
-        }
-
-        // 2️⃣ Enhance events with speakers and photos
-        const enhancedEvents = await Promise.all(events.map(async (event) => {
-            const event_id = event.event_id;
-
-            // Speakers
-            const speakersResult = await pool.query(`
-                SELECT s.speaker_id, s.name, s.position
-                FROM "event_speaker" s
-                JOIN "event_event_event_speakers" j ON s.speaker_id = j.speaker_id
-                WHERE j.event_id = $1
-            `, [event_id]);
-
-            // Photos only for past events
-            const today = new Date().toISOString().split("T")[0];
-            let photos = [];
-            if (event.date < today) {
-                const photosResult = await pool.query(`
-                    SELECT photo
-                    FROM "event_photo"
-                    WHERE event_id_id = $1
-                `, [event_id]);
-                photos = photosResult.rows.map(p => p.photo);
-            }
-
-            // Count attendees
-            const attendeesResult = await pool.query(`
-                SELECT COUNT(*) AS num_attendees
-                FROM "event_eventuser"
-                WHERE event_id_id = $1
-            `, [event_id]);
-
-            const num_attendees = parseInt(attendeesResult.rows[0].num_attendees, 10);
-
-            return {
-                ...event,
-                event_speakers: speakersResult.rows,
-                photos,
-                num_attendees
-            };
-        }));
-
-        res.status(StatusCodes.OK).json({
-            success: true,
-            totalEvents: enhancedEvents.length,
-            data: enhancedEvents
-        });
-
-    } catch (error) {
-        console.error("getEventsByDate Error:", error);
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-            success: false,
-            message: "Failed to get events for the selected date",
-            error: error.message
-        });
-    }
-};
-
-
 const getTotalEvents = async (req, res) => {
     try {
         console.log("Getting total events count... ✅");
 
-        const eventsResult = await pool.query(`SELECT * FROM "event_event" ORDER BY date ASC`);
+        const user = req.user;
+
+        const allowedRolesForPrivate = ["learner", "alumni"];
+        const canSeePrivate =
+            user && allowedRolesForPrivate.includes(user.user_status);
+
+        let query = `
+            SELECT *
+            FROM "event_event"
+        `;
+
+        if (!canSeePrivate) {
+            query += ` WHERE category = 'public'`;
+        }
+
+        query += ` ORDER BY date ASC`;
+
+        const eventsResult = await pool.query(query);
         const events = eventsResult.rows;
 
         if (events.length === 0) {
@@ -250,36 +205,38 @@ const getTotalEvents = async (req, res) => {
             });
         }
 
-        const enhancedEvents = await Promise.all(events.map(async (event) => {
-            const event_id = event.event_id;
+        const enhancedEvents = await Promise.all(
+            events.map(async (event) => {
+                const event_id = event.event_id;
 
-            const speakersResult = await pool.query(`
-                SELECT s.speaker_id, s.name, s.position
-                FROM "event_speaker" s
-                JOIN "event_event_event_speakers" j ON s.speaker_id = j.speaker_id
-                WHERE j.event_id = $1
-            `, [event_id]);
+                const [speakersResult, photosResult] = await Promise.all([
+                    pool.query(
+                        `
+                        SELECT s.speaker_id, s.name, s.position, s.linked_profile
+                        FROM "event_speaker" s
+                        JOIN "event_event_event_speakers" j 
+                        ON s.speaker_id = j.speaker_id
+                        WHERE j.event_id = $1
+                        `,
+                        [event_id]
+                    ),
+                    pool.query(
+                        `
+                        SELECT photo
+                        FROM "event_photo"
+                        WHERE event_id_id = $1
+                        `,
+                        [event_id]
+                    )
+                ]);
 
-            
-            const photosResult = await pool.query(`
-                SELECT photo
-                FROM "event_photo"
-                WHERE event_id_id = $1
-            `, [event_id]);
-
-            const attendeesResult = await pool.query(`
-                SELECT COUNT(*) AS num_attendees
-                FROM "event_eventuser"
-                WHERE event_id_id = $1
-            `, [event_id]);
-
-            return {
-                ...event,
-                event_speakers: speakersResult.rows,
-                photos: photosResult.rows.map(p => p.photo),
-                num_attendees: parseInt(attendeesResult.rows[0].num_attendees, 10)
-            };
-        }));
+                return {
+                    ...event,
+                    event_speakers: speakersResult.rows,
+                    photos: photosResult.rows.map((p) => p.photo)
+                };
+            })
+        );
 
         return res.status(StatusCodes.OK).json({
             success: true,
@@ -297,8 +254,6 @@ const getTotalEvents = async (req, res) => {
         });
     }
 };
-
-
 
 
 
@@ -341,7 +296,7 @@ const getSingleEvent = async (req, res) => {
         }
         const event = foundEvent.rows[0];
         const speakerQuery = `
-            SELECT s.speaker_id, s.name, s.position
+            SELECT s.speaker_id, s.name, s.position ,s.linked_profile
             FROM "event_event_event_speakers" es
             JOIN event_speaker s ON es.speaker_id = s.speaker_id
             WHERE es.event_id = $1
@@ -370,127 +325,324 @@ const getSingleEvent = async (req, res) => {
 };
 
 
+const getEventsByDate = async (req, res) => {
+    try {
+        const { date } = req.query;
+        const user = req.user;
+        const allowedRolesForPrivate = ["learner", "alumni"];
+        const canSeePrivate = user && allowedRolesForPrivate.includes(user.user_status);
+
+        if (!date) {
+            return res.status(400).json({
+                success: false,
+                message: "Date is required in format YYYY-MM-DD"
+            });
+        }
+
+        let query = `SELECT * FROM "event_event" WHERE DATE(date) = $1`;
+        const queryParams = [date];
+
+        if (!canSeePrivate) {
+            query += ` AND category = 'public'`;
+        }
+
+        query += ` ORDER BY date ASC`;
+
+        const eventsResult = await pool.query(query, queryParams);
+        const events = eventsResult.rows;
+
+        if (events.length === 0) {
+            return res.status(StatusCodes.OK).json({
+                success: true,
+                message: `No events found on ${date}`,
+                totalEvents: 0,
+                data: []
+            });
+        }
+
+        const enhancedEvents = await Promise.all(events.map(async (event) => {
+            const event_id = event.event_id;
+
+            const speakersResult = await pool.query(`
+        SELECT s.speaker_id, s.name, s.position
+        FROM "event_speaker" s
+        JOIN "event_event_event_speakers" j
+        ON s.speaker_id = j.speaker_id
+        WHERE j.event_id = $1
+      `, [event_id]);
+
+            const today = new Date().toISOString().split("T")[0];
+            let photos = [];
+            if (event.date < today) {
+                const photosResult = await pool.query(`
+          SELECT photo
+          FROM "event_photo"
+          WHERE event_id_id = $1
+        `, [event_id]);
+                photos = photosResult.rows.map(p => p.photo);
+            }
+
+            return {
+                ...event,
+                event_speakers: speakersResult.rows,
+                photos,
+            };
+        }));
+
+        return res.status(StatusCodes.OK).json({
+            success: true,
+            totalEvents: enhancedEvents.length,
+            data: enhancedEvents
+        });
+    } catch (error) {
+        console.error("getEventsByDate Error:", error);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: "Failed to get events for the selected date",
+            error: error.message
+        });
+    }
+};
+
+
 
 
 const registerForEvent = async (req, res) => {
-    const { event_id } = req.params
-    const { id, username, email, track, is_checked ,ALX_status } = req.body
-    const check = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'event_eventuser'`, [])
-    console.log(check.rows)
-    console.log(`Registering user ${username}  && ${ALX_status}(ID: ${id}) for event ID ${event_id}... ✅`)
-  
+    const { event_id } = req.params;
+    const user = req.user;
+
+    if (!user) {
+        return res.status(StatusCodes.UNAUTHORIZED).json({
+            success: false,
+            message: "You must be logged in"
+        });
+    }
+
+    const client = await pool.connect();
+
     try {
-        const eventQuery = `SELECT title, date FROM "event_event" WHERE event_id = $1`
-        const eventResult = await pool.query(eventQuery, [event_id])
+        await client.query("BEGIN");
+        const eventResult = await client.query(
+            `SELECT title, date, category FROM "event_event" WHERE event_id = $1`,
+            [event_id]
+        );
 
         if (eventResult.rows.length === 0) {
+            await client.query("ROLLBACK");
             return res.status(StatusCodes.NOT_FOUND).json({
                 success: false,
                 message: "Event not found"
-            })
+            });
+        }
+        const { title, date, category } = eventResult.rows[0];
+
+        const allowedRolesForPrivate = ["learner", "alumni"];
+        const canAccessPrivate =
+            category === 'public' ||
+            (user && allowedRolesForPrivate.includes(user.user_status));
+
+        if (!canAccessPrivate) {
+            await client.query("ROLLBACK");
+            return res.status(StatusCodes.FORBIDDEN).json({
+                success: false,
+                message: "You are not allowed to register for this event"
+            });
         }
 
-        const { title, date } = eventResult.rows[0]
-
-        const checkQuery = `SELECT * FROM "event_eventuser" WHERE user_id_id = $1 AND event_id_id = $2`
-        const checkResult = await pool.query(checkQuery, [id, event_id])
+        const checkResult = await client.query(
+            `SELECT 1 FROM "event_eventuser" 
+             WHERE user_id_id = $1 AND event_id_id = $2`,
+            [user.id, event_id]
+        );
 
         if (checkResult.rows.length > 0) {
+            await client.query("ROLLBACK");
             return res.status(StatusCodes.CONFLICT).json({
                 success: false,
-                message: `User already registered for ${title}`
-            })
+                message: `Already registered for ${title}`
+            });
         }
-        // const checkInToken = uuidv4().slice(0, 16)
-        const insertQuery = `INSERT INTO "event_eventuser" (user_id_id, event_id_id, track, is_checked ) VALUES ($1, $2, $3, false) `
-        await pool.query(insertQuery, [id, event_id, track])
 
-        const qrImage = await generateQRCode(id, event_id)
-        await sendConfirmationEmail(username, email, title, date, qrImage)
+        await client.query(
+            `INSERT INTO "event_eventuser" 
+            (user_id_id, event_id_id, is_checked) 
+            VALUES ($1, $2, false)`,
+            [user.id, event_id]
+        );
+
+        await client.query("COMMIT");
+
+        const qrImage = await generateQRCode(user.id, event_id);
+
+        await sendConfirmationEmail(
+            user.username,
+            user.email,
+            title,
+            date,
+            qrImage
+        );
+
         return res.status(StatusCodes.OK).json({
             success: true,
             message: "Registered successfully and confirmation email sent ✅"
-        })
+        });
 
     } catch (error) {
-        console.error("Registration Error:", error)
+        await client.query("ROLLBACK");
+        console.error("Registration Error:", error);
+
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             success: false,
             message: "Failed to register for event"
-        })
+        });
+    } finally {
+        client.release();
     }
-}
-
+};
 
 
 
 const UnRegisterForEvent = async (req, res) => {
-    const { event_id } = req.params
-    const { id } = req.body
-    try {
-        const checkQuery = `SELECT * FROM "event_eventuser" WHERE user_id_id = $1 AND event_id_id = $2`
-        const result = await pool.query(checkQuery, [id, event_id])
+    const { event_id } = req.params;
+    const user = req.user;
 
-        if (result.rows.length === 0) {
+    if (!user) {
+        return res.status(StatusCodes.UNAUTHORIZED).json({
+            success: false,
+            message: "You must be logged in to cancel registration"
+        });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        // 1. Check if event exists
+        const eventResult = await client.query(
+            `SELECT title FROM "event_event" WHERE event_id = $1`,
+            [event_id]
+        );
+
+        if (eventResult.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return res.status(StatusCodes.NOT_FOUND).json({
+                success: false,
+                message: "Event not found"
+            });
+        }
+
+        const { title } = eventResult.rows[0];
+
+        const checkResult = await client.query(
+            `SELECT 1 FROM "event_eventuser" 
+             WHERE user_id_id = $1 AND event_id_id = $2`,
+            [user.id, event_id]
+        );
+
+        if (checkResult.rows.length === 0) {
+            await client.query("ROLLBACK");
             return res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
                 message: "You are not registered for this event"
-            })
+            });
         }
 
-        const deleteQuery = `DELETE FROM "event_eventuser" WHERE user_id_id = $1 AND event_id_id = $2`
-        await pool.query(deleteQuery, [id, event_id])
+        await client.query(
+            `DELETE FROM "event_eventuser" 
+             WHERE user_id_id = $1 AND event_id_id = $2`,
+            [user.id, event_id]
+        );
+
+        await client.query("COMMIT");
 
         return res.status(StatusCodes.OK).json({
             success: true,
-            message: "Registration cancelled successfully"
-        })
+            message: `Registration cancelled for ${title} ✅`
+        });
 
     } catch (error) {
-        console.error("Cancel Registration Error:", error)
+        await client.query("ROLLBACK");
+        console.error("Cancel Registration Error:", error);
+
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             success: false,
             message: "Failed to cancel registration"
-        })
+        });
+    } finally {
+        client.release();
     }
-}
+};
 
 
 
 const verifyQr = async (req, res) => {
-    const { qrData } = req.body
+    const { qrData } = req.body;
+
+    if (!qrData) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+            success: false,
+            message: "QR data is required"
+        });
+    }
+
     try {
-        const { id, event_id } = JSON.parse(qrData)
-        const checkQuery = `SELECT * FROM "event_eventuser" WHERE user_id_id = $1 AND event_id_id = $2`
-        const result = await pool.query(checkQuery, [id, event_id])
+        const decoded = jwt.verify(qrData, process.env.QR_SECRET);
+        const { userId, eventId } = decoded;
+
+        const checkQuery = `
+      SELECT * FROM "event_eventuser"
+      WHERE user_id_id = $1 AND event_id_id = $2
+    `;
+        const result = await pool.query(checkQuery, [userId, eventId]);
+
         if (result.rows.length === 0) {
             return res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
                 message: "Invalid QR code or user not registered for this event"
-            })
+            });
         }
-        const isChecked = result.rows[0].is_checked
+
+        const isChecked = result.rows[0].is_checked;
         if (isChecked) {
             return res.status(StatusCodes.BAD_REQUEST).json({
-                success: false,     
+                success: false,
                 message: "User already checked in for this event"
-            })
+            });
         }
-        const updateQuery = `UPDATE "event_eventuser" SET is_checked = true WHERE user_id_id = $1 AND event_id_id = $2`
-        await pool.query(updateQuery, [id, event_id])
+
+        const updateQuery = `
+      UPDATE "event_eventuser"
+      SET is_checked = true
+      WHERE user_id_id = $1 AND event_id_id = $2
+    `;
+        await pool.query(updateQuery, [userId, eventId]);
 
         return res.status(StatusCodes.OK).json({
             success: true,
-            message: "QR code verified successfully, user checked in"
-        })    
+            message: "QR code verified successfully ✅ user checked in"
+        });
+
     } catch (error) {
-        console.error("QR Verification Error:", error)
+        console.error("QR Verification Error:", error);
+
+        if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
+            return res.status(StatusCodes.BAD_REQUEST).json({
+                success: false,
+                message: "Invalid or expired QR code"
+            });
+        }
+
         return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             success: false,
-            message: "Failed to verify QR code"
-        })
-        }
+            message: "Failed to verify QR code",
+            error: error.message
+        });
     }
+};
+
+
+
 
 
 module.exports = {

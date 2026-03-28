@@ -12,20 +12,22 @@ const {
  } = require("../../validators/eventValidators")
 
 const validationSchema = require("../../middlewares/validation")
+const optionalAuth = require("../../middlewares/optinalAuth")   
 
 
-eventRouter.get("/totalEvents", getTotalEvents)
-eventRouter.get("/totalAttendees", getTotalAttendees)
-eventRouter.get("/upcoming", upcomingEvents)
-eventRouter.get("/past", pastEvents)
-eventRouter.get("/date", validationSchema(eventDateValidator , "query"), getEventsByDate)   //filter events by date 
+eventRouter.get("/totalEvents", optionalAuth, getTotalEvents)
+eventRouter.get("/totalAttendees", optionalAuth, getTotalAttendees)
+eventRouter.get("/upcoming", optionalAuth, upcomingEvents)
+eventRouter.get("/past", optionalAuth, pastEvents)
+
+eventRouter.get("/date", validationSchema(eventDateValidator , "query"), getEventsByDate) 
 eventRouter.get("/:event_id",validationSchema(eventIdValidator , "params"), getSingleEvent)
 eventRouter.post("/verify-qr", verifyQr)
 
 eventRouter.use(authenticatedUser)
 
-eventRouter.post("/:event_id/register", validationSchema(eventIdValidator, "params") ,validationSchema(registerationEventValidator), registerForEvent)
-eventRouter.delete("/:event_id/unregister",validationSchema(eventIdValidator , "params"),validationSchema(UnregisterEventValidator), UnRegisterForEvent)
+eventRouter.post("/:event_id/register", validationSchema(eventIdValidator, "params") ,registerForEvent)
+eventRouter.delete("/:event_id/unregister",validationSchema(eventIdValidator , "params"),UnRegisterForEvent)
 
 
 

@@ -15,6 +15,7 @@ const createEvent = async (req, res) => {
         category,
         venue,
         is_finished,
+        paid,
         event_speakers,
     } = req.body;
 
@@ -27,15 +28,16 @@ const createEvent = async (req, res) => {
         }
         if (speakers && Array.isArray(speakers)) {
             const insertSpeakerQuery = `
-        INSERT INTO "event_speaker" (name, position)
-        VALUES ($1, $2)
+        INSERT INTO "event_speaker" (name, position, linked_profile)
+        VALUES ($1, $2, $3)
         RETURNING speaker_id
     `;
             const speakerPromises = speakers.map(async (speaker) => {
-                const { name, position } = speaker;
+                const { name, position, linked_profile } = speaker;
                 const result = await pool.query(insertSpeakerQuery, [
                     name,
                     position || null,
+                    linked_profile || null,
                 ]);
                 return result.rows[0].speaker_id;
             });
@@ -44,8 +46,8 @@ const createEvent = async (req, res) => {
 
         const insertEventQuery = `
       INSERT INTO "event_event"
-      (title, date, city, description, type, target_audience, category, venue, is_finished)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      (title, date, city, description, type, target_audience, category, venue, is_finished, paid)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *
     `;
 
@@ -59,6 +61,7 @@ const createEvent = async (req, res) => {
             category,
             venue,
             is_finished,
+            paid
         ]);
 
         const event_id = eventResult.rows[0].event_id;
@@ -98,7 +101,7 @@ const createEvent = async (req, res) => {
             }
         }
         const speakersResult = await pool.query(`
-    SELECT s.speaker_id, s.name, s.position
+    SELECT s.speaker_id, s.name, s.position, s.linked_profile
     FROM "event_speaker" s
     JOIN "event_event_event_speakers" j
     ON s.speaker_id = j.speaker_id
@@ -132,7 +135,6 @@ const updateEvent = async (req, res) => {
     try {
         await client.query("BEGIN");
 
-        // Check if event exists
         const existingEvent = await client.query(
             `SELECT * FROM "event_event" WHERE event_id = $1`,
             [event_id]
@@ -148,7 +150,6 @@ const updateEvent = async (req, res) => {
 
         const { date } = req.body;
 
-        // If date is being updated, check for conflicts
         if (date) {
             const dateConflict = await client.query(
                 `SELECT * FROM "event_event" WHERE date = $1 AND event_id != $2`,
@@ -170,7 +171,11 @@ const updateEvent = async (req, res) => {
             "city",
             "description",
             "type",
-            "target_audience"
+            "target_audience",
+            "category",
+            "venue",
+            "is_finished",
+            "paid"
         ];
 
         const fields = [];
@@ -198,7 +203,7 @@ const updateEvent = async (req, res) => {
         }
 
         const speakersResult = await client.query(`
-            SELECT s.speaker_id, s.name, s.position
+            SELECT s.speaker_id, s.name, s.position, s.linked_profile
             FROM "event_speaker" s
             JOIN "event_event_event_speakers" j
             ON s.speaker_id = j.speaker_id
@@ -207,7 +212,6 @@ const updateEvent = async (req, res) => {
 
       let photos = []
 
-// upload new photos if exist
 if (req.files && req.files.length > 0) {
 
     for (const file of req.files) {
@@ -228,7 +232,6 @@ if (req.files && req.files.length > 0) {
     }
 }
 
-// get all photos for this event (old + new)
 const photosResult = await client.query(
     `SELECT photo FROM event_photo WHERE event_id_id = $1`,
     [event_id]
@@ -263,10 +266,6 @@ photos = photosResult.rows.map(p => p.photo)
 
 
 
-
-
-
-
 const deleteEvent = async (req, res) => {
     const { event_id } = req.params
     const client = await pool.connect()
@@ -280,7 +279,7 @@ const deleteEvent = async (req, res) => {
 
         if (!event.rows.length) {
             await client.query("ROLLBACK")
-            return res.status(404).json({
+            return res.status(StatusCodes.NOT_FOUND).json({
                 success: false,
                 message: "Event not found"
             })
@@ -308,14 +307,14 @@ await client.query(`DELETE FROM "event_event" WHERE event_id=$1`, [event_id])
 
         await client.query("COMMIT")
 
-        return res.status(200).json({
+        return res.status(StatusCodes.OK).json({
             success: true,
             message: "Event deleted successfully"
         })
 
     } catch (error) {
         await client.query("ROLLBACK")
-        return res.status(500).json({
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
             success: false,
             message: "Failed to delete event",
             error: error.message
@@ -335,7 +334,7 @@ const downloadMonthlyReportExcel = async (req, res) => {
         const { month } = req.params
 
         if (!month) {
-            return res.status(400).json({
+            return res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
                 message: "Month is required in format YYYY-MM"
             })

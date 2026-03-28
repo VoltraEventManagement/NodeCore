@@ -3,6 +3,7 @@ const { z } = require("zod")
 const speakerValidator = z.object({
   name: z.string().min(1, "Speaker name is required"),
   position: z.string().min(2, "Speaker position is required"),
+  linked_profile: z.url("Invalid LinkedIn profile URL"),
 });
 
 
@@ -13,12 +14,12 @@ const createEventValidator = z.object({
   description: z.string().min(1, "Description of event is required"),
   type: z.string().min(2, "please define type of event (online, offline"),
   target_audience: z.string().min(1, "please define your target_audience"),
-  category: z.string().min(1, "please define category of event (city_team, department, voltra_team, alumni)"),
+  category: z.string().min(1, "please define category of event (public, private)"),
   venue: z.preprocess((val) => val === "false", z.boolean()),
   is_finished: z.preprocess((val) => val === "false", z.boolean()),
+  paid : z.preprocess((val) => val === "false", z.boolean()),
   // event_speakers: z.array(speakerValidator).min(1, "At least one speaker is required"),
     event_speakers: z.string().optional()
-
 })
 
 
