@@ -17,7 +17,7 @@ const upcomingEvents = async (req, res) => {
         `;
 
         if (!canSeePrivate) {
-            query += ` AND category = public`;
+            query += ` AND category = 'public'`;
         }
         query += ` ORDER BY date ASC`;
 
