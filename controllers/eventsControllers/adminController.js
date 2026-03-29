@@ -479,9 +479,130 @@ const downloadMonthlyReportExcel = async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const adminUpdateUser = async (req, res) => {
+  const admin = req.user; // from auth middleware
+  const { id } = req.params;
+  const { username, email, track, user_status } = req.body;
+
+  try {
+    // 1️⃣ Check if admin
+    if (!admin || admin.role !== "admin") {
+      return res.status(StatusCodes.FORBIDDEN).json({
+        success: false,
+        message: "Access denied. Admins only."
+      });
+    }
+
+    // 2️⃣ Check if user exists
+    const userCheck = await pool.query(
+      `SELECT * FROM "user_user" WHERE id = $1`,
+      [id]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // 3️⃣ Build dynamic update query
+    const fields = [];
+    const values = [];
+    let index = 1;
+
+    if (username) {
+      fields.push(`username = $${index++}`);
+      values.push(username);
+    }
+
+    if (email) {
+      fields.push(`email = $${index++}`);
+      values.push(email);
+    }
+
+    if (track) {
+      fields.push(`track = $${index++}`);
+      values.push(track);
+    }
+
+    if (user_status) {
+      fields.push(`user_status = $${index++}`);
+      values.push(user_status);
+    }
+
+    if (fields.length === 0) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: "No data provided to update"
+      });
+    }
+
+    // Add user_id as last param
+    values.push(id);
+
+    const updateQuery = `
+      UPDATE "user_user"
+      SET ${fields.join(", ")}
+      WHERE id = $${index}
+      RETURNING id, username, email, track, user_status
+    `;
+
+    const updatedUser = await pool.query(updateQuery, values);
+
+    return res.status(StatusCodes.OK).json({
+      success: true,
+      message: "User updated successfully ✅",
+      data: updatedUser.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Admin Update User Error:", error);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to update user",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
 module.exports = {
     createEvent,
     updateEvent,
     deleteEvent,
-    downloadMonthlyReportExcel
+    downloadMonthlyReportExcel, 
+    adminUpdateUser
 }
