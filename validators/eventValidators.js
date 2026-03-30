@@ -10,6 +10,11 @@ const speakerValidator = z.object({
 const createEventValidator = z.object({
   title: z.string().min(1, "Title is required"),
   date: z.coerce.date({ errorMap: () => ({ message: "Invalid date format" }) }),
+time: z
+  .string()
+  .regex(/^([0-9]|1[0-9]|2[0-3]):([0-5][0-9])$/, {
+    message: "Time must be in format H:MM or HH:MM (e.g. 1:30 or 12:05)",
+  }),
   city: z.string().min(2, "city is required"),
   description: z.string().min(1, "Description of event is required"),
   type: z.string().min(2, "please define type of event (online, offline"),
@@ -17,14 +22,14 @@ const createEventValidator = z.object({
   category: z.string().min(1, "please define category of event (public, private)"),
   venue: z.preprocess((val) => val === "false", z.boolean()),
   is_finished: z.preprocess((val) => val === "false", z.boolean()),
-  paid : z.preprocess((val) => val === "false", z.boolean()),
+  paid: z.preprocess((val) => val === "false", z.boolean()),
   // event_speakers: z.array(speakerValidator).min(1, "At least one speaker is required"),
-    event_speakers: z.string().optional()
+  event_speakers: z.string().optional()
 })
 
 
 const imageSchema = z.object({
-  mimetype: z.enum(["image/png","image/jpeg","image/jpg","image/webp"], {
+  mimetype: z.enum(["image/png", "image/jpeg", "image/jpg", "image/webp"], {
     errorMap: () => ({ message: "Invalid image type. Allowed types: png, jpeg, jpg, webp" })
   }),
   size: z.number().max(5 * 1024 * 1024, {
@@ -39,12 +44,12 @@ format we define in create event
 */
 
 const eventIdParamValidator = z.object({
-  event_id: z.coerce.number(), 
+  event_id: z.coerce.number(),
 });
-const deleteEventValidator = z.object({  
+const deleteEventValidator = z.object({
   event_id: z.coerce.number()
 })
- 
+
 const eventIdValidator = z.object({
   event_id: z.coerce.number()
 });

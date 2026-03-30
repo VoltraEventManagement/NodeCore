@@ -4,7 +4,6 @@ require("dotenv").config()
 const optionalAuth = (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        console.log("Auth Header:", authHeader); // 👈 add this
 
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
             req.user = null;
@@ -13,6 +12,7 @@ const optionalAuth = (req, res, next) => {
 
         const token = authHeader.split(" ")[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log("Decoded JWT Payload:", decoded);
         req.user = decoded;
         next();
 

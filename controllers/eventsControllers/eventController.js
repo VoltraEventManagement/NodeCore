@@ -410,6 +410,7 @@ const getEventsByDate = async (req, res) => {
 const registerForEvent = async (req, res) => {
     const { event_id } = req.params;
     const user = req.user;
+    console.log(`User ${user.user_id} is attempting to register for event ID: ${event_id}`);
 
     if (!user) {
         return res.status(StatusCodes.UNAUTHORIZED).json({
@@ -448,11 +449,12 @@ const registerForEvent = async (req, res) => {
                 message: "You are not allowed to register for this event"
             });
         }
+        console.log(`User ${user.user_id} is trying to register for event: ${title} (ID: ${event_id})`);
 
         const checkResult = await client.query(
             `SELECT 1 FROM "event_eventuser" 
              WHERE user_id_id = $1 AND event_id_id = $2`,
-            [user.id, event_id]
+            [user.user_id, event_id]
         );
 
         if (checkResult.rows.length > 0) {
@@ -467,12 +469,12 @@ const registerForEvent = async (req, res) => {
             `INSERT INTO "event_eventuser" 
             (user_id_id, event_id_id, is_checked) 
             VALUES ($1, $2, false)`,
-            [user.id, event_id]
+            [user.user_id, event_id]
         );
 
         await client.query("COMMIT");
 
-        const qrImage = await generateQRCode(user.id, event_id);
+        const qrImage = await generateQRCode(user.user_id, event_id);
 
         await sendConfirmationEmail(
             user.username,
@@ -537,7 +539,7 @@ const UnRegisterForEvent = async (req, res) => {
         const checkResult = await client.query(
             `SELECT 1 FROM "event_eventuser" 
              WHERE user_id_id = $1 AND event_id_id = $2`,
-            [user.id, event_id]
+            [user.user_id, event_id]
         );
 
         if (checkResult.rows.length === 0) {
@@ -551,7 +553,7 @@ const UnRegisterForEvent = async (req, res) => {
         await client.query(
             `DELETE FROM "event_eventuser" 
              WHERE user_id_id = $1 AND event_id_id = $2`,
-            [user.id, event_id]
+            [user.user_id, event_id]
         );
 
         await client.query("COMMIT");

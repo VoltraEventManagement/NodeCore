@@ -31,6 +31,8 @@ const sendConfirmationEmail = async (
           </div>
 
           <p style="margin-top:20px;">We look forward to seeing you! 🚀</p>
+
+          <p>Best regards,<br>Voltra Team</p>
         </div>
       `,
             attachments: [

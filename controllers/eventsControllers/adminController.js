@@ -8,6 +8,7 @@ const createEvent = async (req, res) => {
     const {
         title,
         date,
+        time,
         city,
         description,
         type,
@@ -20,18 +21,46 @@ const createEvent = async (req, res) => {
     } = req.body;
 
     try {
+        const existingEvent = await pool.query(
+            `SELECT * FROM "event_event"
+             WHERE title = $1 AND date = $2 AND time = $3`,
+            [title, date, time]
+        );
+
+        if (existingEvent.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Event already exists with same title, date and time",
+            });
+        }
+
+        const conflictEvent = await pool.query(
+            `SELECT * FROM "event_event"
+             WHERE date = $1 AND time = $2 AND venue = $3`,
+            [date, time, venue]
+        );
+
+        if (conflictEvent.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Another event is already scheduled at the same time and venue",
+            });
+        }
+
         let speakerIds = [];
         let speakers = event_speakers;
 
         if (typeof speakers === "string") {
             speakers = JSON.parse(speakers);
         }
+
         if (speakers && Array.isArray(speakers)) {
             const insertSpeakerQuery = `
-        INSERT INTO "event_speaker" (name, position, linked_profile)
-        VALUES ($1, $2, $3)
-        RETURNING speaker_id
-    `;
+                INSERT INTO "event_speaker" (name, position, linked_profile)
+                VALUES ($1, $2, $3)
+                RETURNING speaker_id
+            `;
+
             const speakerPromises = speakers.map(async (speaker) => {
                 const { name, position, linked_profile } = speaker;
                 const result = await pool.query(insertSpeakerQuery, [
@@ -41,19 +70,21 @@ const createEvent = async (req, res) => {
                 ]);
                 return result.rows[0].speaker_id;
             });
+
             speakerIds = await Promise.all(speakerPromises);
         }
 
         const insertEventQuery = `
-      INSERT INTO "event_event"
-      (title, date, city, description, type, target_audience, category, venue, is_finished, paid)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      RETURNING *
-    `;
+            INSERT INTO "event_event"
+            (title, date, time, city, description, type, target_audience, category, venue, is_finished, paid)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            RETURNING *
+        `;
 
         const eventResult = await pool.query(insertEventQuery, [
             title,
             date,
+            time,
             city,
             description,
             type,
@@ -67,11 +98,10 @@ const createEvent = async (req, res) => {
         const event_id = eventResult.rows[0].event_id;
 
         if (speakerIds.length > 0) {
-
             const insertJunctionQuery = `
-        INSERT INTO "event_event_event_speakers" (event_id, speaker_id)
-        VALUES ($1, $2)
-      `;
+                INSERT INTO "event_event_event_speakers" (event_id, speaker_id)
+                VALUES ($1, $2)
+            `;
 
             const junctionPromises = speakerIds.map((speakerId) =>
                 pool.query(insertJunctionQuery, [event_id, speakerId])
@@ -79,34 +109,33 @@ const createEvent = async (req, res) => {
 
             await Promise.all(junctionPromises);
         }
-        let photos = []
+
+        let photos = [];
 
         if (req.files && req.files.length > 0) {
-
             for (const file of req.files) {
-
                 const result = await cloudinary.uploader.upload(
                     `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
-                    {
-                        folder: "events"
-                    }
-                )
+                    { folder: "events" }
+                );
 
                 await pool.query(
                     `INSERT INTO event_photo (event_id_id, photo) VALUES ($1,$2)`,
                     [event_id, result.secure_url]
-                )
+                );
 
-                photos.push(result.secure_url)
+                photos.push(result.secure_url);
             }
         }
+
         const speakersResult = await pool.query(`
-    SELECT s.speaker_id, s.name, s.position, s.linked_profile
-    FROM "event_speaker" s
-    JOIN "event_event_event_speakers" j
-    ON s.speaker_id = j.speaker_id
-    WHERE j.event_id = $1
-`, [event_id])
+            SELECT s.speaker_id, s.name, s.position, s.linked_profile
+            FROM "event_speaker" s
+            JOIN "event_event_event_speakers" j
+            ON s.speaker_id = j.speaker_id
+            WHERE j.event_id = $1
+        `, [event_id]);
+
         return res.status(StatusCodes.CREATED).json({
             success: true,
             message: `${title} event created successfully`,
@@ -168,6 +197,7 @@ const updateEvent = async (req, res) => {
         const allowedFields = [
             "title",
             "date",
+            "time",
             "city",
             "description",
             "type",
