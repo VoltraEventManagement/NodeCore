@@ -534,7 +534,7 @@ const downloadMonthlyReportExcel = async (req, res) => {
 const adminUpdateUser = async (req, res) => {
   const admin = req.user; // from auth middleware
   const { id } = req.params;
-  const { username, email, track, user_status } = req.body;
+  const { username, email, track, user_status, role } = req.body;
 
   try {
     // 1️⃣ Check if admin
@@ -581,6 +581,10 @@ const adminUpdateUser = async (req, res) => {
     if (user_status) {
       fields.push(`user_status = $${index++}`);
       values.push(user_status);
+    }
+        if (role) {
+      fields.push(`role = $${index++}`);
+      values.push(role);
     }
 
     if (fields.length === 0) {
