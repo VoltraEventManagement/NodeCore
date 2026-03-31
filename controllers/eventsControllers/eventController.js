@@ -2,6 +2,9 @@ const { StatusCodes } = require("http-status-codes")
 const pool = require("../../DB/connectPostgresql")
 const generateQRCode = require("../../services/generateQR")
 const sendConfirmationEmail = require("../../services/sendConfirmationEmail")
+const jwt = require("jsonwebtoken")
+const jwtSecret ="4Ff8$9gH!2kLm#7pQwXzRt5vB!8yYn3b"
+ 
 
 
 const upcomingEvents = async (req, res) => {
@@ -634,7 +637,7 @@ const verifyQr = async (req, res) => {
     }
 
     try {
-        const decoded = jwt.verify(qrData,"4Ff8$9gH!2kLm#7pQwXzRt5vB!8yYn3bNc9mMjKoOuIgHdFf2eE");
+        const decoded = jwt.verify(qrData,jwtSecret);
         const { userId, eventId } = decoded;
 
         const checkQuery = `
