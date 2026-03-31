@@ -12,8 +12,8 @@ const createEventValidator = z.object({
   date: z.coerce.date({ errorMap: () => ({ message: "Invalid date format" }) }),
 time: z
   .string()
-  .regex(/^([0-9]|1[0-9]|2[0-3]):([0-5][0-9])$/, {
-    message: "Time must be in format H:MM or HH:MM (e.g. 1:30 or 12:05)",
+  .regex(/^(0?[1-9]|1[0-2]):([0-5][0-9])\s?(AM|PM)$/i, {
+    message: "Time must be in format H:MM AM/PM or HH:MM AM/PM (e.g. 1:30 PM or 12:05 AM)",
   }),
   city: z.string().min(2, "city is required"),
   description: z.string().min(1, "Description of event is required"),
