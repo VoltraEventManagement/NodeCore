@@ -5,6 +5,7 @@ const sendConfirmationEmail = async (
     email,
     title,
     date,
+    time,
     qrImage
 ) => {
     try {
@@ -23,7 +24,7 @@ const sendConfirmationEmail = async (
         <div style="font-family: Arial, sans-serif; padding: 20px;">
           <h2>Hello ${username}, 👋</h2>
           <p>Your registration for <strong>${title}</strong> has been confirmed.</p>
-          <p><strong>Date:</strong> ${date}</p>
+          <p><strong>Date:</strong> ${date} At ${time}</p>
           <p>Please present the QR code below at the event entrance for check-in:</p>
           
           <div style="margin-top:20px;">

@@ -442,6 +442,7 @@ const registerForEvent = async (req, res) => {
         }
 
         const { title, date, category, time } = eventResult.rows[0];
+        const formattedDate = date.toISOString().split("T")[0];
 
         // 2. Authorization check
         const allowedRolesForPrivate = ["learner", "alumni"];
@@ -489,31 +490,21 @@ const registerForEvent = async (req, res) => {
         res.status(StatusCodes.OK).json({
             success: true,
             message: "Registered successfully ✅",
-            data: { title, date, category, time }
+            data: { title, date: formattedDate, category, time }
         });
+        console.log("Generating QR...");
+        const qrImage = await generateQRCode(user.user_id, event_id);
 
-        // 6. Background tasks (non-blocking)
-        setImmediate(async () => {
-            try {
-                console.log("Generating QR...");
-                const qrImage = await generateQRCode(user.user_id, event_id);
-
-                console.log("Sending email...");
-                await sendConfirmationEmail(
-                    user.username,
-                    user.email,
-                    title,
-                    date,
-                    time,
-                    qrImage
-                );
-
-                console.log("Email sent successfully ✅");
-            } catch (err) {
-                console.error("Background Task Error:", err);
-            }
-        });
-
+        console.log("Sending email...");
+        await sendConfirmationEmail(
+            user.username,
+            user.email,
+            title,
+            formattedDate,
+            time,
+            qrImage
+        );
+        console.log("Email sent successfully ✅");
     } catch (error) {
         await client.query("ROLLBACK");
         console.error("Registration Error:", error);
@@ -538,7 +529,6 @@ const UnRegisterForEvent = async (req, res) => {
             message: "You must be logged in to cancel registration"
         });
     }
-
     const client = await pool.connect();
 
     try {
