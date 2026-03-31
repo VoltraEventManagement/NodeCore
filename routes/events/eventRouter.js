@@ -3,7 +3,7 @@
 const express = require("express")
 const eventRouter = express.Router()
 const authenticatedUser = require("../../middlewares/userAuthentication")
-const { upcomingEvents, pastEvents, getEventsByDate, registerForEvent, UnRegisterForEvent, getSingleEvent, getTotalEvents, getTotalAttendees ,verifyQr} = require("../../controllers/eventsControllers/eventController")
+const { upcomingEvents, pastEvents, getEventsByDate, registerForEvent, UnRegisterForEvent, getSingleEvent, getTotalEvents, getTotalAttendees ,verifyQr, upcomingEventsApp} = require("../../controllers/eventsControllers/eventController")
 const { 
     eventIdValidator,
     eventDateValidator,
@@ -20,9 +20,10 @@ eventRouter.get("/totalAttendees", optionalAuth, getTotalAttendees)
 eventRouter.get("/upcoming", optionalAuth, upcomingEvents)
 eventRouter.get("/past", optionalAuth, pastEvents)
 
+eventRouter.post("/verify-qr", verifyQr)
+eventRouter.get("/upcomingEventsApp",upcomingEventsApp)
 eventRouter.get("/date", validationSchema(eventDateValidator , "query"), getEventsByDate) 
 eventRouter.get("/:event_id",validationSchema(eventIdValidator , "params"), getSingleEvent)
-eventRouter.post("/verify-qr", verifyQr)
 
 eventRouter.use(authenticatedUser)
 

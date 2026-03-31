@@ -591,6 +591,38 @@ const UnRegisterForEvent = async (req, res) => {
 
 
 
+
+const upcomingEventsApp = async (req, res) => {
+    try {
+        const query = `
+            SELECT event_id, title, date, category, time
+            FROM "event_event"
+            WHERE date >= CURRENT_DATE
+            ORDER BY date ASC
+        `;
+        const result = await pool.query(query);
+        if (result.rows.length === 0) {
+            return res.status(StatusCodes.OK).json({
+                success: true,
+                data: [],
+                message: "No upcoming events found for Mobile App"
+            });
+        }
+        return res.status(StatusCodes.OK).json({
+            success: true,
+            data: result.rows
+        });
+    } catch (error) {
+        console.error("Upcoming Events for App Error:", error);
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: "Failed to get upcoming events for Mobile App"
+        });
+    }
+}
+        
+
+
 const verifyQr = async (req, res) => {
     const { qrData } = req.body;
 
@@ -669,5 +701,6 @@ module.exports = {
     getSingleEvent,
     getTotalEvents,
     getTotalAttendees,
+    upcomingEventsApp,
     verifyQr
 }
