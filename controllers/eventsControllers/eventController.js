@@ -410,7 +410,8 @@ const getEventsByDate = async (req, res) => {
 const registerForEvent = async (req, res) => {
     const { event_id } = req.params;
     const user = req.user;
-    console.log(`User ${user.user_id} is attempting to register for event ID: ${event_id}`);
+
+    console.log(`User ${user?.user_id} is attempting to register for event ID: ${event_id}`);
 
     if (!user) {
         return res.status(StatusCodes.UNAUTHORIZED).json({
@@ -423,8 +424,12 @@ const registerForEvent = async (req, res) => {
 
     try {
         await client.query("BEGIN");
+
+        // 1. Get event
         const eventResult = await client.query(
-            `SELECT title, date, category FROM "event_event" WHERE event_id = $1`,
+            `SELECT title, date, category, time 
+             FROM "event_event" 
+             WHERE event_id = $1`,
             [event_id]
         );
 
@@ -435,12 +440,14 @@ const registerForEvent = async (req, res) => {
                 message: "Event not found"
             });
         }
-        const { title, date, category } = eventResult.rows[0];
 
+        const { title, date, category, time } = eventResult.rows[0];
+
+        // 2. Authorization check
         const allowedRolesForPrivate = ["learner", "alumni"];
         const canAccessPrivate =
-            category === 'public' ||
-            (user && allowedRolesForPrivate.includes(user.user_status));
+            category === "public" ||
+            allowedRolesForPrivate.includes(user.user_status);
 
         if (!canAccessPrivate) {
             await client.query("ROLLBACK");
@@ -449,8 +456,10 @@ const registerForEvent = async (req, res) => {
                 message: "You are not allowed to register for this event"
             });
         }
-        console.log(`User ${user.user_id} is trying to register for event: ${title} (ID: ${event_id})`);
 
+        console.log(`User ${user.user_id} is trying to register for event: ${title}`);
+
+        // 3. Check if already registered
         const checkResult = await client.query(
             `SELECT 1 FROM "event_eventuser" 
              WHERE user_id_id = $1 AND event_id_id = $2`,
@@ -465,28 +474,44 @@ const registerForEvent = async (req, res) => {
             });
         }
 
+        // 4. Insert registration
         await client.query(
             `INSERT INTO "event_eventuser" 
-            (user_id_id, event_id_id, is_checked) 
-            VALUES ($1, $2, false)`,
+             (user_id_id, event_id_id, is_checked) 
+             VALUES ($1, $2, false)`,
             [user.user_id, event_id]
         );
 
+        // ✅ Commit BEFORE email/QR
         await client.query("COMMIT");
 
-        const qrImage = await generateQRCode(user.user_id, event_id);
-
-        await sendConfirmationEmail(
-            user.username,
-            user.email,
-            title,
-            date,
-            qrImage
-        );
-
-        return res.status(StatusCodes.OK).json({
+        // 5. Send response FIRST (important)
+        res.status(StatusCodes.OK).json({
             success: true,
-            message: "Registered successfully and confirmation email sent ✅"
+            message: "Registered successfully ✅",
+            data: { title, date, category, time }
+        });
+
+        // 6. Background tasks (non-blocking)
+        setImmediate(async () => {
+            try {
+                console.log("Generating QR...");
+                const qrImage = await generateQRCode(user.user_id, event_id);
+
+                console.log("Sending email...");
+                await sendConfirmationEmail(
+                    user.username,
+                    user.email,
+                    title,
+                    date,
+                    time,
+                    qrImage
+                );
+
+                console.log("Email sent successfully ✅");
+            } catch (err) {
+                console.error("Background Task Error:", err);
+            }
         });
 
     } catch (error) {
@@ -501,7 +526,6 @@ const registerForEvent = async (req, res) => {
         client.release();
     }
 };
-
 
 
 const UnRegisterForEvent = async (req, res) => {
@@ -520,7 +544,6 @@ const UnRegisterForEvent = async (req, res) => {
     try {
         await client.query("BEGIN");
 
-        // 1. Check if event exists
         const eventResult = await client.query(
             `SELECT title FROM "event_event" WHERE event_id = $1`,
             [event_id]
