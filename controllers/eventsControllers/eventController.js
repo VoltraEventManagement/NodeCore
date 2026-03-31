@@ -634,7 +634,7 @@ const verifyQr = async (req, res) => {
     }
 
     try {
-        const decoded = jwt.verify(qrData, process.env.QR_SECRET);
+        const decoded = jwt.verify(qrData,"4Ff8$9gH!2kLm#7pQwXzRt5vB!8yYn3bNc9mMjKoOuIgHdFf2eE");
         const { userId, eventId } = decoded;
 
         const checkQuery = `
